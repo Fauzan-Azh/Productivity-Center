@@ -113,6 +113,38 @@ export default function Dashboard() {
     onError: (error: any) => setErrorMsg(error.message)
   });
 
+  // MUTATION BARU: Menyalin agenda aktif ke hari esoknya
+  const duplicateToTomorrowMutation = useMutation({
+    mutationFn: async () => {
+      if (tasksForSelectedDate.length === 0) {
+        throw new Error("Tidak ada rencana kegiatan di tanggal ini untuk disalin.");
+      }
+
+      // Hitung tanggal besok dari selectedDate aktif
+      const tomorrow = new Date(selectedDate);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const tomorrowStr = getYYYYMMDD(tomorrow);
+
+      // Siapkan paket payload tugas baru dengan reset status ke "Belum Mulai"
+      const payload = tasksForSelectedDate.map(task => ({
+        title: task.title,
+        start_time: task.start_time,
+        priority: task.priority,
+        category: "-",
+        date: tomorrowStr,
+        status: "Belum Mulai" as Status
+      }));
+
+      const { error } = await supabase.from('tasks').insert(payload);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      alert("Agenda berhasil disalin ke hari besok! Silakan ganti tanggal kalender ke besok untuk menyesuaikan.");
+    },
+    onError: (error: any) => setErrorMsg(error.message)
+  });
+
   const editTaskMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string, data: typeof editFormData }) => {
       const { error } = await supabase.from('tasks').update({ title: data.title, priority: data.priority }).eq('id', id);
@@ -175,29 +207,51 @@ export default function Dashboard() {
   const currentShiftVisual = SHIFT_CONFIG[activeShift];
 
   return (
-    <div className="min-h-screen bg-[#fcfdfe] text-neutral-900 px-6 py-8 antialiased selection:bg-indigo-100">
+    <div className="min-h-screen bg-[#fcfdfe] text-neutral-900 px-4 sm:px-6 py-8 antialiased selection:bg-indigo-100">
       <div className="max-w-[1440px] mx-auto">
         
         {/* TOP META ROW */}
-        <header className="mb-10 flex flex-col sm:flex-row justify-between items-start sm:items-end border-b border-neutral-200/70 pb-6 gap-4">
+        <header className="mb-10 flex flex-col md:flex-row justify-between items-start md:items-end border-b border-neutral-200/70 pb-6 gap-4">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-neutral-950 flex items-center gap-2.5">
-               <span className="text-indigo-600">Fauzan Azhima's Productivity</span>  Center
+               <span className="text-indigo-600">Fauzan Azhima's Productivity</span> Center
             </h1>
             <p className="text-xs font-mono text-neutral-500 uppercase mt-1.5 tracking-wider bg-neutral-100 px-2 py-0.5 rounded inline-block">
               {time.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short' })} // {time.toLocaleTimeString('id-ID')}
             </p>
           </div>
           
-          {/* DATE PICKER */}
-          <div className="flex items-center bg-white border border-neutral-200 px-4 py-2 rounded-xl shadow-sm hover:border-indigo-200 transition">
-            <CalendarIcon size={15} className="text-indigo-400 mr-2.5" />
-            <input 
-              type="date" 
-              value={selectedDateStr}
-              onChange={(e) => setSelectedDate(new Date(e.target.value))}
-              className="bg-transparent text-sm font-semibold text-neutral-800 outline-none cursor-pointer font-sans"
-            />
+          {/* ACTION BUTTONS & DATE PICKER */}
+          <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto justify-end">
+            
+            {/* BUTTON FITUR BARU: SALIN KE BESOK */}
+            <button
+              onClick={() => {
+                if (confirm("Salin seluruh rencana kegiatan hari ini ke tanggal besok?")) {
+                  duplicateToTomorrowMutation.mutate();
+                }
+              }}
+              disabled={tasksForSelectedDate.length === 0 || duplicateToTomorrowMutation.isPending}
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 text-sm font-semibold rounded-xl hover:bg-indigo-100 transition w-full sm:w-auto shadow-sm active:scale-95 disabled:opacity-40 disabled:pointer-events-none"
+              title="Salin Agenda Hari Ini ke Esok Hari"
+            >
+              <Activity size={15} />
+              <span>Salin Rutinitas ke Besok</span>
+            </button>
+
+            {/* DATE PICKER CONTAINER */}
+            <div className="flex items-center bg-white border border-neutral-200 px-4 py-2 rounded-xl shadow-sm hover:border-indigo-200 transition w-full sm:w-auto justify-between sm:justify-start">
+              <div className="flex items-center">
+                <CalendarIcon size={15} className="text-indigo-400 mr-2.5" />
+                <input 
+                  type="date" 
+                  value={selectedDateStr}
+                  onChange={(e) => setSelectedDate(new Date(e.target.value))}
+                  className="bg-transparent text-sm font-semibold text-neutral-800 outline-none cursor-pointer font-sans"
+                />
+              </div>
+            </div>
+
           </div>
         </header>
 
@@ -207,13 +261,15 @@ export default function Dashboard() {
           {/* LEFT CONTENT: THE MANAGEMENT GRID */}
           <div className="lg:col-span-8 bg-white border border-neutral-200/70 rounded-2xl shadow-sm overflow-hidden transition-all duration-300">
             
-            {/* SHIFT SYSTEM CONTROLLER */}
-            <div className={`flex items-center justify-between border-b border-neutral-100 bg-${currentShiftVisual.color}-50/40 px-6 py-4`}>
+            {/* SHIFT SYSTEM CONTROLLER (REVISI: JUDUL DI ATAS BUTTONS PADA MOBILE) */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-neutral-100 bg-neutral-50/50 px-6 py-4 gap-4">
               <div className="flex items-center gap-3">
                 <currentShiftVisual.icon className={`text-${currentShiftVisual.color}-500`} size={18} />
-                <span className={`text-sm font-semibold tracking-tight text-${currentShiftVisual.color}-950`}>Time Blocks / {activeShift}</span>
+                <span className={`text-sm font-semibold tracking-tight text-neutral-800`}>Time Blocks / {activeShift}</span>
               </div>
-              <div className="flex bg-neutral-100 p-1 rounded-xl border border-neutral-200/50">
+              
+              {/* Slider Button Filter Shift */}
+              <div className="flex bg-neutral-100 p-1 rounded-xl border border-neutral-200/50 overflow-x-auto max-w-full whitespace-nowrap scrollbar-none sm:overflow-visible">
                 {(["Semua", "Pagi", "Siang", "Malam"] as ShiftPeriod[]).map((shift) => {
                     const cfg = SHIFT_CONFIG[shift];
                     const isActive = activeShift === shift;
@@ -221,7 +277,7 @@ export default function Dashboard() {
                         <button
                             key={shift}
                             onClick={() => setActiveShift(shift)}
-                            className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 
+                            className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 flex-shrink-0
                                 ${isActive 
                                     ? `bg-white text-${cfg.color}-700 shadow-sm` 
                                     : `text-neutral-500 hover:text-${cfg.color}-600`
@@ -254,7 +310,7 @@ export default function Dashboard() {
                     <th className="py-4 px-6 w-28 text-right">Tindakan</th>
                   </tr>
                 </thead>
-                <tbody className="text-sm divide-y divide-neutral-100/70">
+                <tbody className="text-sm divide-y divide-neutral-100/60">
                   
                   {filteredHours.map((hour) => {
                     const task = tasksForSelectedDate.find(t => t.start_time.startsWith(hour.substring(0, 2)));
@@ -269,7 +325,7 @@ export default function Dashboard() {
                     return (
                       <tr key={hour} className={`group transition-colors duration-100 min-h-[56px] ${task ? rowHoverColor : ''}`}>
                         
-                        {/* COLUMN 1: INTEGRATED CHECKBOX STATUS */}
+                        {/* COLUMN 1: CHECKBOX */}
                         <td className="py-3 px-6 align-middle text-center">
                           {task ? (
                             <button 
@@ -292,7 +348,7 @@ export default function Dashboard() {
                           {hour}
                         </td>
 
-                        {/* COLUMN 3: MAIN WORK CONTENT */}
+                        {/* COLUMN 3: MAIN CONTENT */}
                         {isEditing ? (
                           <>
                             <td className="py-3 px-4 align-middle">
@@ -340,7 +396,7 @@ export default function Dashboard() {
                             <td className="py-3 px-4 align-middle">
                               <span className={`text-[11px] uppercase font-bold tracking-wider px-3 py-1 rounded-full
                                 ${task.priority === 1 ? 'text-red-700 bg-red-100 border border-red-200' : task.priority === 2 ? 'text-amber-800 bg-amber-100 border border-amber-200' : 'text-emerald-800 bg-emerald-50 border border-emerald-100'}`}>
-                                P{task.priority} // {task.priority === 1 ? 'High' : task.priority === 2 ? 'Mid' : 'Low'}
+                                P{task.priority}
                               </span>
                             </td>
                             <td className="py-3 px-6 align-middle text-right">
@@ -348,14 +404,12 @@ export default function Dashboard() {
                                 <button 
                                   onClick={() => { setEditingTaskId(task.id); setEditFormData({ title: task.title, priority: task.priority }); }}
                                   className="p-2 text-indigo-500 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition-colors"
-                                  title="Ubah Rencana"
                                 >
                                   <Pencil size={15} />
                                 </button>
                                 <button 
                                   onClick={() => { if(confirm('Hapus rencana jam ini?')) deleteTaskMutation.mutate(task.id); }}
                                   className="p-2 text-red-400 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
-                                  title="Hapus"
                                 >
                                   <Trash2 size={15} />
                                 </button>
